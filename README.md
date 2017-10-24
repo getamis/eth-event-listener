@@ -1,2 +1,2 @@
-# event_listener
+# listener
 event listener for smart contracts
