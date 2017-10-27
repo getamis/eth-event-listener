@@ -38,7 +38,7 @@ func NewEventListener(client EthClient,
 	return l
 }
 
-func (el *EventListener) Listen(eventCh chan<- *BlockEvent) error {
+func (el *EventListener) Listen(eventCh chan<- *BlockEvent, stop <-chan struct{}) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sub, err := el.client.SubscribeNewHead(ctx, el.subCh)
@@ -58,6 +58,8 @@ func (el *EventListener) Listen(eventCh chan<- *BlockEvent) error {
 			}
 
 			eventCh <- el.Parse(block)
+		case <-stop:
+			return nil
 		}
 	}
 }
