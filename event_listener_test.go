@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/maichain/listener/mocks"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/stretchr/testify/mock"
+
+	"github.com/getamis/eth-event-listener/mocks"
 )
 
 var _ = Describe("Event listener tests", func() {
@@ -26,7 +27,9 @@ var _ = Describe("Event listener tests", func() {
 		It("SubscribeNewHead failed", func() {
 			expectedErr := errors.New("SubscribeNewHead failed")
 			mockClient.On("SubscribeNewHead", Anything, Anything).Return(nil, expectedErr)
-			err := l.Listen(nil)
+			stop := make(chan struct{}, 1)
+			defer close(stop)
+			err := l.Listen(nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
@@ -42,7 +45,9 @@ var _ = Describe("Event listener tests", func() {
 			}()
 			mockClient.On("SubscribeNewHead",
 				Anything, Anything).Return(emptySub, nil)
-			err := l.Listen(nil)
+			stop := make(chan struct{}, 1)
+			defer close(stop)
+			err := l.Listen(nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
@@ -61,7 +66,9 @@ var _ = Describe("Event listener tests", func() {
 				l.subCh <- expectedHeader
 			}()
 
-			go l.Listen(blockEventCh)
+			stop := make(chan struct{}, 1)
+			defer close(stop)
+			go l.Listen(blockEventCh, stop)
 			blockEvent := <-blockEventCh
 			expectedBlockEvent := &BlockEvent{
 				Block: expectedBlock,
