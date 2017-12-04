@@ -16,19 +16,13 @@
 [[projects]]
   name = "github.com/ethereum/go-ethereum"
   packages = [".","accounts/abi","common","common/hexutil","common/math","core/types","crypto","crypto/secp256k1","crypto/sha3","log","params","rlp","trie"]
-  revision = "1db4ecdc0b9e828ff65777fb466fc7c1d04e0de9"
-  version = "v1.7.2"
+  revision = "4bb3c89d44e372e6a9ab85a8be0c9345265c763a"
+  version = "v1.7.3"
 
 [[projects]]
   name = "github.com/go-stack/stack"
   packages = ["."]
   revision = "817915b46b97fd7bb80e8ab6b69f01a53ac3eebf"
-  version = "v1.6.0"
-
-[[projects]]
-  name = "github.com/maichain/go-ethereum"
-  packages = ["log"]
-  revision = "facc47cb5cec97b22c815a0a6118816a98f39876"
   version = "v1.6.0"
 
 [[projects]]
@@ -88,6 +82,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7f92b72dc8edc4b26ffa54e9cd712d2bc4f4c93cbffe1b799d5dc7364123ef50"
+  inputs-digest = "619d5c8442f75293576bfb235f07d16f8546bd253c34524d2bcc123e2673314e"
   solver-name = "gps-cdcl"
   solver-version = 1
