@@ -2,8 +2,11 @@ package listener
 
 import (
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -17,24 +20,47 @@ var _ = Describe("Event listener tests", func() {
 		l          *EventListener
 		mockClient *mocks.EthClient
 	)
+	testEventID := hashGen()
+	testEvents := make(map[common.Hash]string)
+	testEvents[testEventID] = "test-event"
+	testContracts := []*Contract{
+		&Contract{
+			Name:    "test-contract",
+			Address: addrGen(),
+			events:  testEvents,
+		},
+	}
 
 	BeforeEach(func() {
 		mockClient = &mocks.EthClient{}
-		l = NewEventListener(mockClient, nil)
+		l = NewEventListener(mockClient, testContracts)
 	})
 
 	Context("Listen tests", func() {
-		It("SubscribeNewHead failed", func() {
-			expectedErr := errors.New("SubscribeNewHead failed")
-			mockClient.On("SubscribeNewHead", Anything, Anything).Return(nil, expectedErr)
+		It("SubscribeFilterLogs failed", func() {
+			expectedErr := errors.New("SubscribeFilterLogs failed")
+			mockClient.On("SubscribeFilterLogs", Anything, Anything, Anything).Return(nil, expectedErr).Once()
 			stop := make(chan struct{}, 1)
 			defer close(stop)
-			err := l.Listen(nil, stop)
+			err := l.Listen(nil, nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
-		It("Subscribe failed", func() {
-			expectedErr := errors.New("Subscribe failed")
+		It("FilterLogs failed", func() {
+			emptySub := &Subscription{
+				err: make(chan error, 1),
+			}
+			mockClient.On("SubscribeFilterLogs", Anything, Anything, Anything).Return(emptySub, nil).Once()
+			expectedErr := errors.New("FilterLogs failed")
+			mockClient.On("FilterLogs", Anything, Anything).Return(nil, expectedErr).Once()
+			stop := make(chan struct{}, 1)
+			defer close(stop)
+			err := l.Listen(nil, nil, stop)
+			Expect(expectedErr).Should(Equal(err))
+		})
+
+		It("Subscription Error", func() {
+			expectedErr := errors.New("Subscription error")
 			errCh := make(chan error, 1)
 			emptySub := &Subscription{
 				err: errCh,
@@ -43,37 +69,54 @@ var _ = Describe("Event listener tests", func() {
 			go func() {
 				errCh <- expectedErr
 			}()
-			mockClient.On("SubscribeNewHead",
-				Anything, Anything).Return(emptySub, nil)
+			mockClient.On("SubscribeFilterLogs",
+				Anything, Anything, Anything).Return(emptySub, nil)
+			mockClient.On("FilterLogs", Anything, Anything).Return(nil, nil).Once()
 			stop := make(chan struct{}, 1)
 			defer close(stop)
-			err := l.Listen(nil, stop)
+			err := l.Listen(nil, nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
-		It("New block comes", func() {
+		It("Handle the past log", func() {
 			errCh := make(chan error, 1)
-			blockEventCh := make(chan *BlockEvent, 1)
+			eventCh := make(chan *ContractEvent, 1)
 			emptySub := &Subscription{
 				err: errCh,
 			}
-			expectedHeader := &types.Header{}
-			expectedBlock := types.NewBlockWithHeader(expectedHeader)
+			mockClient.On("SubscribeFilterLogs",
+				Anything, Anything, Anything).Return(emptySub, nil)
 
-			mockClient.On("SubscribeNewHead", Anything, Anything).Return(emptySub, nil)
-			mockClient.On("BlockByHash", Anything, expectedHeader.Hash()).Return(expectedBlock, nil)
-			go func() {
-				l.subCh <- expectedHeader
-			}()
+			blockNumber := uint64(1)
+			blockHash := hashGen()
+			txHash := hashGen()
+			pastLog := types.Log{
+				Address:     testContracts[0].Address,
+				Topics:      []common.Hash{testEventID},
+				BlockNumber: blockNumber,
+				BlockHash:   blockHash,
+				TxHash:      txHash,
+			}
+			mockClient.On("FilterLogs", Anything, Anything).Return([]types.Log{pastLog}, nil).Once()
 
 			stop := make(chan struct{}, 1)
 			defer close(stop)
-			go l.Listen(blockEventCh, stop)
-			blockEvent := <-blockEventCh
-			expectedBlockEvent := &BlockEvent{
-				Block: expectedBlock,
+			go l.Listen(nil, eventCh, stop)
+
+			var event *ContractEvent = nil
+			select {
+			case event = <-eventCh:
+			case <-time.After(1 * time.Second):
 			}
-			Expect(expectedBlockEvent).Should(Equal(blockEvent))
+
+			expectedEvent := &ContractEvent{
+				BlockNumber: blockNumber,
+				BlockHash:   blockHash,
+				TxHash:      txHash,
+				Contract:    testContracts[0],
+				Name:        testEvents[testEventID],
+			}
+			Expect(expectedEvent).Should(Equal(event))
 		})
 	})
 })
@@ -91,4 +134,12 @@ func (s Subscription) Unsubscribe() {}
 
 func (s Subscription) Err() <-chan error {
 	return s.err
+}
+
+func hashGen() common.Hash {
+	return common.StringToHash(fmt.Sprintf("hash-%d", time.Now().UnixNano()))
+}
+
+func addrGen() common.Address {
+	return common.StringToAddress(fmt.Sprintf("addr-%d", time.Now().UnixNano()))
 }

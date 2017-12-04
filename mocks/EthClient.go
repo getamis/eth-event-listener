@@ -3,7 +3,6 @@ package mocks
 import common "github.com/ethereum/go-ethereum/common"
 import context "context"
 import ethereum "github.com/ethereum/go-ethereum"
-
 import mock "github.com/stretchr/testify/mock"
 import types "github.com/ethereum/go-ethereum/core/types"
 
@@ -28,6 +27,52 @@ func (_m *EthClient) BlockByHash(ctx context.Context, hash common.Hash) (*types.
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
 		r1 = rf(ctx, hash)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// FilterLogs provides a mock function with given fields: ctx, q
+func (_m *EthClient) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	ret := _m.Called(ctx, q)
+
+	var r0 []types.Log
+	if rf, ok := ret.Get(0).(func(context.Context, ethereum.FilterQuery) []types.Log); ok {
+		r0 = rf(ctx, q)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]types.Log)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, ethereum.FilterQuery) error); ok {
+		r1 = rf(ctx, q)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SubscribeFilterLogs provides a mock function with given fields: ctx, q, ch
+func (_m *EthClient) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
+	ret := _m.Called(ctx, q, ch)
+
+	var r0 ethereum.Subscription
+	if rf, ok := ret.Get(0).(func(context.Context, ethereum.FilterQuery, chan<- types.Log) ethereum.Subscription); ok {
+		r0 = rf(ctx, q, ch)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(ethereum.Subscription)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, ethereum.FilterQuery, chan<- types.Log) error); ok {
+		r1 = rf(ctx, q, ch)
 	} else {
 		r1 = ret.Error(1)
 	}

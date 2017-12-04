@@ -12,7 +12,7 @@ type Contract struct {
 	ABI     abi.ABI
 	Address common.Address
 
-	// event ID <-> events mapping
+	// event ID <-> event Name mapping
 	events map[common.Hash]string
 }
 
