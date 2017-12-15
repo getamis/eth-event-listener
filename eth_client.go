@@ -12,6 +12,10 @@ type EthClient interface {
 	// SubscribeNewHead subscribes to notifications about the current blockchain head
 	// on the given channel.
 	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+	// FilterLogs executes a filter query.
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+	// SubscribeFilterLogs subscribes to the results of a streaming filter query.
+	SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error)
 	// TransactionReceipt returns the receipt of a transaction by transaction hash.
 	// Note that the receipt is not available for pending transactions.
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)

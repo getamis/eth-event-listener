@@ -2,20 +2,24 @@ package listener
 
 import (
 	"context"
+	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+)
+
+const (
+	bufferedLogSize = 1000
 )
 
 var logger = log.New()
 
 type EventListener struct {
 	client EthClient
-	subCh  chan *types.Header
+	logCh  chan types.Log
 
-	// Contract name <-> Contract mapping
-	nameMap map[string]*Contract
 	// Contract address <-> Contract mapping
 	addressMap map[common.Address]*Contract
 }
@@ -25,78 +29,80 @@ func NewEventListener(client EthClient,
 
 	l := &EventListener{
 		client:     client,
-		nameMap:    make(map[string]*Contract),
 		addressMap: make(map[common.Address]*Contract),
-		subCh:      make(chan *types.Header),
+		logCh:      make(chan types.Log, bufferedLogSize),
 	}
 
 	for _, c := range contracts {
-		l.nameMap[c.Name] = c
 		l.addressMap[c.Address] = c
 	}
 
 	return l
 }
 
-func (el *EventListener) Listen(eventCh chan<- *BlockEvent, stop <-chan struct{}) error {
+func (el *EventListener) Listen(fromBlock *big.Int, eventCh chan<- *ContractEvent, stop <-chan struct{}) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sub, err := el.client.SubscribeNewHead(ctx, el.subCh)
+
+	contracts := make([]common.Address, 0)
+	for addr, _ := range el.addressMap {
+		contracts = append(contracts, addr)
+	}
+	q := ethereum.FilterQuery{
+		FromBlock: fromBlock,
+		Addresses: contracts,
+	}
+	sub, err := el.client.SubscribeFilterLogs(ctx, q, el.logCh)
 	if err != nil {
 		return err
 	}
 	defer sub.Unsubscribe()
 
+	// fetch the past logs
+	logs, err := el.client.FilterLogs(context.Background(), q)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for _, l := range logs {
+			el.logCh <- l
+		}
+	}()
+
 	for {
 		select {
 		case err := <-sub.Err():
 			return err
-		case header := <-el.subCh:
-			block, err := el.client.BlockByHash(context.Background(), header.Hash())
-			if err != nil {
-				continue
+		case log := <-el.logCh:
+			if cEvent := el.Parse(log); cEvent != nil {
+				eventCh <- cEvent
 			}
-
-			eventCh <- el.Parse(block)
 		case <-stop:
 			return nil
 		}
 	}
 }
 
-func (el *EventListener) Parse(block *types.Block) *BlockEvent {
-	blockEvent := &BlockEvent{
-		Block: block,
+func (el *EventListener) Parse(l types.Log) *ContractEvent {
+	c, ok := el.addressMap[l.Address]
+	if !ok {
+		return nil
 	}
-	for _, tx := range block.Transactions() {
-		if tx.To() == nil {
-			continue
-		}
-
-		// check if this event is not in our registered contracts
-		c, ok := el.addressMap[*tx.To()]
-		if !ok {
-			continue
-		}
-		r, err := el.client.TransactionReceipt(context.Background(), tx.Hash())
-		if err != nil {
-			logger.Warn("Failed to get receipt", "err", err)
-			continue
-		}
-		for _, l := range r.Logs {
-			if len(l.Topics) == 0 {
-				break
-			}
-			name, ok := c.events[l.Topics[0]]
-			if ok {
-				blockEvent.Events = append(blockEvent.Events, &ContractEvent{
-					Contract: c,
-					Tx:       tx,
-					Name:     name,
-					Data:     l.Data,
-				})
-			}
-		}
+	if len(l.Topics) == 0 {
+		return nil
 	}
-	return blockEvent
+	name, ok := c.events[l.Topics[0]]
+	if !ok {
+		return nil
+	}
+	return &ContractEvent{
+		BlockNumber: l.BlockNumber,
+		BlockHash:   l.BlockHash,
+		TxHash:      l.TxHash,
+		Contract:    c,
+		Name:        name,
+		Data:        l.Data,
+		Removed:     l.Removed,
+	}
 }
