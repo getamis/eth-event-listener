@@ -54,6 +54,7 @@ func (el *EventListener) Listen(fromBlock *big.Int, eventCh chan<- *ContractEven
 	}
 	sub, err := el.client.SubscribeFilterLogs(ctx, q, el.logCh)
 	if err != nil {
+		logger.Error("Failed to subscribe filter logs", "err", err)
 		return err
 	}
 	defer sub.Unsubscribe()
@@ -61,6 +62,7 @@ func (el *EventListener) Listen(fromBlock *big.Int, eventCh chan<- *ContractEven
 	// fetch the past logs
 	logs, err := el.client.FilterLogs(context.Background(), q)
 	if err != nil {
+		logger.Error("Failed to execute a filter query command", "err", err)
 		return err
 	}
 
@@ -73,12 +75,14 @@ func (el *EventListener) Listen(fromBlock *big.Int, eventCh chan<- *ContractEven
 	for {
 		select {
 		case err := <-sub.Err():
+			logger.Error("Unexpected subscription error", "err", err)
 			return err
 		case log := <-el.logCh:
 			if cEvent := el.Parse(log); cEvent != nil {
 				eventCh <- cEvent
 			}
 		case <-stop:
+			logger.Warn("Received a stop signal")
 			return nil
 		}
 	}

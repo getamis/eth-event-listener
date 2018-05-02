@@ -25,6 +25,7 @@ func NewContract(name string, abiJSON string, address common.Address) (*Contract
 
 	abi, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
+		logger.Error("Failed to parse ABI interface", "name", name, "abi", abiJSON, "address", address.Hex(), "err", err)
 		return nil, err
 	}
 	c.ABI = abi
