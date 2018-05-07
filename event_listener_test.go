@@ -17,8 +17,9 @@ import (
 
 var _ = Describe("Event listener tests", func() {
 	var (
-		l          *EventListener
 		mockClient *mocks.EthClient
+		l          *EventListener
+		stop       chan struct{}
 	)
 	testEventID := hashGen()
 	testEvents := make(map[common.Hash]string)
@@ -33,16 +34,15 @@ var _ = Describe("Event listener tests", func() {
 
 	BeforeEach(func() {
 		mockClient = &mocks.EthClient{}
-		l = NewEventListener(mockClient, testContracts)
+		l = NewEventListener(mockClient, testContracts, 10000, 10000)
+		stop = make(chan struct{}, 1)
 	})
 
 	Context("Listen tests", func() {
 		It("SubscribeFilterLogs failed", func() {
 			expectedErr := errors.New("SubscribeFilterLogs failed")
 			mockClient.On("SubscribeFilterLogs", Anything, Anything, Anything).Return(nil, expectedErr).Once()
-			stop := make(chan struct{}, 1)
-			defer close(stop)
-			err := l.Listen(nil, nil, stop)
+			err := l.Listen(nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
@@ -53,9 +53,7 @@ var _ = Describe("Event listener tests", func() {
 			mockClient.On("SubscribeFilterLogs", Anything, Anything, Anything).Return(emptySub, nil).Once()
 			expectedErr := errors.New("FilterLogs failed")
 			mockClient.On("FilterLogs", Anything, Anything).Return(nil, expectedErr).Once()
-			stop := make(chan struct{}, 1)
-			defer close(stop)
-			err := l.Listen(nil, nil, stop)
+			err := l.Listen(nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
@@ -72,15 +70,12 @@ var _ = Describe("Event listener tests", func() {
 			mockClient.On("SubscribeFilterLogs",
 				Anything, Anything, Anything).Return(emptySub, nil)
 			mockClient.On("FilterLogs", Anything, Anything).Return(nil, nil).Once()
-			stop := make(chan struct{}, 1)
-			defer close(stop)
-			err := l.Listen(nil, nil, stop)
+			err := l.Listen(nil, stop)
 			Expect(expectedErr).Should(Equal(err))
 		})
 
 		It("Handle the past log", func() {
 			errCh := make(chan error, 1)
-			eventCh := make(chan *ContractEvent, 1)
 			emptySub := &Subscription{
 				err: errCh,
 			}
@@ -99,13 +94,11 @@ var _ = Describe("Event listener tests", func() {
 			}
 			mockClient.On("FilterLogs", Anything, Anything).Return([]types.Log{pastLog}, nil).Once()
 
-			stop := make(chan struct{}, 1)
-			defer close(stop)
-			go l.Listen(nil, eventCh, stop)
+			go l.Listen(nil, stop)
 
 			var event *ContractEvent = nil
 			select {
-			case event = <-eventCh:
+			case event = <-l.eventCh:
 			case <-time.After(1 * time.Second):
 			}
 
@@ -117,6 +110,41 @@ var _ = Describe("Event listener tests", func() {
 				Name:        testEvents[testEventID],
 			}
 			Expect(expectedEvent).Should(Equal(event))
+			close(stop)
+		})
+
+		It("Gracefully shut down", func() {
+			errCh := make(chan error, 1)
+			emptySub := &Subscription{
+				err: errCh,
+			}
+			mockClient.On("SubscribeFilterLogs",
+				Anything, Anything, Anything).Return(emptySub, nil)
+
+			var pastLogs []types.Log
+			var receivedEvents []*ContractEvent
+			pastLogNum := 9999
+			for i := 0; i < pastLogNum; i++ {
+				blockNumber := uint64(1)
+				blockHash := hashGen()
+				txHash := hashGen()
+				log := types.Log{
+					Address:     testContracts[0].Address,
+					Topics:      []common.Hash{testEventID},
+					BlockNumber: blockNumber,
+					BlockHash:   blockHash,
+					TxHash:      txHash,
+				}
+				pastLogs = append(pastLogs, log)
+			}
+			mockClient.On("FilterLogs", Anything, Anything).Return(pastLogs, nil).Once()
+			go l.Listen(nil, stop)
+			close(stop) //shut it down immediately
+			time.Sleep(5 * time.Second)
+			for event := range l.eventCh {
+				receivedEvents = append(receivedEvents, event)
+			}
+			Expect(len(receivedEvents)).Should(Equal(pastLogNum))
 		})
 	})
 })
