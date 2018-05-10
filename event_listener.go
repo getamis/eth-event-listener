@@ -127,3 +127,7 @@ func (el *EventListener) channelCleanUp() {
 	close(el.eventCh)
 	return
 }
+
+func (el *EventListener) GetEventCh() <-chan *ContractEvent {
+	return el.eventCh
+}

@@ -96,9 +96,10 @@ var _ = Describe("Event listener tests", func() {
 
 			go l.Listen(nil, stop)
 
+			eventCh := l.GetEventCh()
 			var event *ContractEvent = nil
 			select {
-			case event = <-l.eventCh:
+			case event = <-eventCh:
 			case <-time.After(1 * time.Second):
 			}
 
@@ -141,7 +142,9 @@ var _ = Describe("Event listener tests", func() {
 			go l.Listen(nil, stop)
 			close(stop) //shut it down immediately
 			time.Sleep(5 * time.Second)
-			for event := range l.eventCh {
+
+			eventCh := l.GetEventCh()
+			for event := range eventCh {
 				receivedEvents = append(receivedEvents, event)
 			}
 			Expect(len(receivedEvents)).Should(Equal(pastLogNum))
